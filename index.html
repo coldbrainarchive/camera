@@ -29,7 +29,6 @@ html, body {
   box-sizing: border-box;
   touch-action: manipulation;
 
-  /* base glow */
   box-shadow:
     0 0 18px rgba(255,255,255,0.6),
     0 0 40px rgba(200,220,255,0.35),
@@ -38,9 +37,6 @@ html, body {
   animation: breathe 3.2s ease-in-out infinite;
 }
 
-/* ─────────────────────────────
-   BLOOM HALO (soft additive)
-───────────────────────────── */
 #circle::before {
   content: "";
   position: absolute;
@@ -58,9 +54,6 @@ html, body {
   pointer-events: none;
 }
 
-/* ─────────────────────────────
-   INNER ENERGY RIM
-───────────────────────────── */
 #circle::after {
   content: "";
   position: absolute;
@@ -72,9 +65,6 @@ html, body {
   pointer-events: none;
 }
 
-/* ─────────────────────────────
-   BREATHING MOTION
-───────────────────────────── */
 @keyframes breathe {
   0% {
     transform: scale(1);
@@ -126,24 +116,46 @@ input {
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload";
 
-const params = new URLSearchParams(location.search);
-const session = params.get("session") || "";
-
 const circle = document.getElementById("circle");
 const uploader = document.getElementById("uploader");
 
+/* ─────────────────────────────
+   RETURN HANDLING
+───────────────────────────── */
+function goBack(extra = {}) {
+  const scene = localStorage.getItem("returnScene") || "";
+  const qs = new URLSearchParams({
+    scene,
+    ...extra
+  });
+  location.href = `https://coldbrainarchive.pages.dev/?${qs.toString()}`;
+}
+
+/* ─────────────────────────────
+   OPEN CAMERA
+───────────────────────────── */
 circle.addEventListener("click", () => {
-  uploader.value = ""; // 🔑 reset so cancel works
+  uploader.value = "";
   uploader.click();
 });
 
+/* ─────────────────────────────
+   TAP OUTSIDE → CANCEL & RETURN
+───────────────────────────── */
+document.body.addEventListener("pointerdown", (e) => {
+  if (!circle.contains(e.target)) {
+    goBack({ verified: "false" });
+  }
+});
+
+/* ─────────────────────────────
+   HANDLE VIDEO
+───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
-  // User backed out of camera → allow retry
-  if (!file) {
-    return;
-  }
+  // User cancelled camera
+  if (!file) return;
 
   try {
     const res = await fetch(UPLOAD_API, {
@@ -157,27 +169,15 @@ uploader.addEventListener("change", async () => {
     if (!res.ok) throw new Error();
 
     const data = await res.json();
-    finish({
+    goBack({
       verified: "true",
       video: data.publicUrl
     });
 
   } catch {
-    finish({ verified: "false" });
+    goBack({ verified: "false" });
   }
 });
-
-function finish(result) {
-  const returnUrl =
-    localStorage.getItem("returnUrl") ||
-    "https://coldbrainarchive.pages.dev/";
-
-  const qs = new URLSearchParams(result);
-
-  location.href = `${returnUrl}${
-    returnUrl.includes("?") ? "&" : "?"
-  }${qs.toString()}`;
-}
 </script>
 
 </body>
