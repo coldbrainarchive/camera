@@ -168,10 +168,16 @@ uploader.addEventListener("change", async () => {
 });
 
 function finish(result) {
+  const returnScene =
+    localStorage.getItem("returnScene") || "";
+
+  // Build return URL
   const qs = new URLSearchParams({
     ...result,
-    session
+    scene: returnScene
   });
+
+  // Go back to game root
   location.href = `/?${qs.toString()}`;
 }
 </script>
