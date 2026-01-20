@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera Verification</title>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#status {
+  text-align: center;
+  opacity: 0.85;
+}
+
+input {
+  display: none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="status">
+  <p>Record a short video</p>
+  <p>(3–5 seconds)</p>
+</div>
+
+<input
+  id="uploader"
+  type="file"
+  accept="video/*"
+  capture="user"
+/>
+
+<script>
+/**
+ * CONFIG
+ */
+const UPLOAD_API =
+  "https://archive-worker.coldbrainarchive.workers.dev/upload";
+
+// Optional: session id from GDevelop
+const params = new URLSearchParams(location.search);
+const session = params.get("session") || "";
+
+// Automatically open camera
+const uploader = document.getElementById("uploader");
+setTimeout(() => uploader.click(), 300);
+
+// Handle video selection
+uploader.addEventListener("change", async () => {
+  const file = uploader.files[0];
+  if (!file) {
+    fail("No video recorded");
+    return;
+  }
+
+  document.getElementById("status").innerText = "Uploading…";
+
+  try {
+    const res = await fetch(UPLOAD_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "video/mp4"
+      },
+      body: file
+    });
+
+    if (!res.ok) throw new Error("Upload failed");
+
+    const data = await res.json();
+
+    success(data.publicUrl);
+
+  } catch (err) {
+    console.error(err);
+    fail("Upload error");
+  }
+});
+
+function success(url) {
+  // Send result back to game
+  redirect({
+    verified: "true",
+    video: url
+  });
+}
+
+function fail(reason) {
+  redirect({
+    verified: "false",
+    error: reason
+  });
+}
+
+function redirect(params) {
+  const base = "/";
+  const qs = new URLSearchParams({
+    ...params,
+    session
+  });
+
+  location.href = `${base}?${qs.toString()}`;
+}
+</script>
+
+</body>
+</html>
