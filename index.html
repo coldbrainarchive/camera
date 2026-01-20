@@ -116,6 +116,16 @@ input {
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload";
 
+/* ─────────────────────────────
+   CAPTURE RETURN SCENE ON ENTRY
+───────────────────────────── */
+const params = new URLSearchParams(location.search);
+const sceneFromGame = params.get("scene");
+
+if (sceneFromGame) {
+  localStorage.setItem("returnScene", sceneFromGame);
+}
+
 const circle = document.getElementById("circle");
 const uploader = document.getElementById("uploader");
 
@@ -125,10 +135,12 @@ const uploader = document.getElementById("uploader");
 function goBack(extra = {}) {
   const scene = localStorage.getItem("returnScene") || "";
   const qs = new URLSearchParams({
-    scene,
+    ...(scene ? { scene } : {}),
     ...extra
   });
-  location.href = `https://coldbrainarchive.pages.dev/?${qs.toString()}`;
+
+  location.href =
+    `https://coldbrainarchive.pages.dev/?${qs.toString()}`;
 }
 
 /* ─────────────────────────────
