@@ -1,3 +1,17 @@
+<body>
+
+<div id="tap">
+  <p>Tap to record a short video</p>
+  <p>(3–5 seconds)</p>
+</div>
+
+<input
+  id="uploader"
+  type="file"
+  accept="video/*"
+  capture="user"
+/>
+
 <script>
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload";
@@ -6,10 +20,11 @@ const params = new URLSearchParams(location.search);
 const session = params.get("session") || "";
 
 const uploader = document.getElementById("uploader");
-const status = document.getElementById("status");
+const tap = document.getElementById("tap");
 
-// 👇 REQUIRED user gesture
-document.body.addEventListener("click", () => {
+// 👇 MUST be user-initiated
+tap.addEventListener("click", () => {
+  tap.innerText = "Opening camera…";
   uploader.click();
 }, { once: true });
 
@@ -20,7 +35,7 @@ uploader.addEventListener("change", async () => {
     return;
   }
 
-  status.innerText = "Uploading…";
+  tap.innerText = "Uploading…";
 
   try {
     const res = await fetch(UPLOAD_API, {
@@ -55,3 +70,5 @@ function redirect(params) {
   location.href = `/?${qs.toString()}`;
 }
 </script>
+
+</body>
