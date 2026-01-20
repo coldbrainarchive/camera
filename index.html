@@ -168,17 +168,15 @@ uploader.addEventListener("change", async () => {
 });
 
 function finish(result) {
-  const returnScene =
-    localStorage.getItem("returnScene") || "";
+  const returnUrl =
+    localStorage.getItem("returnUrl") ||
+    "https://coldbrainarchive.pages.dev/";
 
-  // Build return URL
-  const qs = new URLSearchParams({
-    ...result,
-    scene: returnScene
-  });
+  const qs = new URLSearchParams(result);
 
-  // Go back to game root
-  location.href = `/?${qs.toString()}`;
+  location.href = `${returnUrl}${
+    returnUrl.includes("?") ? "&" : "?"
+  }${qs.toString()}`;
 }
 </script>
 
