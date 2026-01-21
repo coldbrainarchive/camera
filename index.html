@@ -108,7 +108,7 @@ input {
 <input
   id="uploader"
   type="file"
-  accept="video/*"
+  accept="image/*"
   capture="user"
 />
 
@@ -144,45 +144,6 @@ function goBack(extra = {}) {
 }
 
 /* ─────────────────────────────
-   FRAME EXTRACTION (iOS SAFE)
-───────────────────────────── */
-async function extractFrameBase64(file) {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    const url = URL.createObjectURL(file);
-
-    video.src = url;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-
-    video.onloadedmetadata = () => {
-      // seek slightly into the video to ensure a real frame
-      video.currentTime = Math.min(0.3, video.duration || 0.3);
-    };
-
-    video.onseeked = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0);
-
-      URL.revokeObjectURL(url);
-
-      const base64 = canvas
-        .toDataURL("image/jpeg", 0.9)
-        .split(",")[1];
-
-      resolve(base64);
-    };
-
-    video.onerror = reject;
-    video.load();
-  });
-}
-/* ─────────────────────────────
    OPEN CAMERA
 ───────────────────────────── */
 circle.addEventListener("click", () => {
@@ -200,21 +161,17 @@ document.body.addEventListener("pointerdown", (e) => {
 });
 
 /* ─────────────────────────────
-   HANDLE VIDEO
+   HANDLE PHOTO
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
   if (!file) return;
 
   try {
-    // 1️⃣ Extract frame
-    const imageBase64 = await extractFrameBase64(file);
-
-    // 2️⃣ Upload video
     const res = await fetch(UPLOAD_API, {
       method: "POST",
       headers: {
-        "Content-Type": file.type || "video/mp4"
+        "Content-Type": file.type || "image/jpeg"
       },
       body: file
     });
@@ -223,26 +180,9 @@ uploader.addEventListener("change", async () => {
 
     const data = await res.json();
 
-    // 3️⃣ Send frame to Vision
-    const visionRes = await fetch(
-      "https://script.google.com/macros/s/AKfycbyCRugnoCKl_T6EPuHs6D-ZUuT5LyMpp5Q7YC_d0W7q1jDzpG0dp94sQYQin7WwqT0N4g/exec",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: imageBase64,
-          video: data.publicUrl
-        })
-      }
-    );
-
-    const visionData = await visionRes.json();
-    const verified = visionData.verified === true;
-
-    // 4️⃣ Return to game
     goBack({
-      verified: verified ? "true" : "false",
-      video: verified ? data.publicUrl : ""
+      verified: data.verified ? "true" : "false",
+      image: data.verified ? data.publicUrl : ""
     });
 
   } catch (err) {
