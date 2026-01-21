@@ -156,7 +156,12 @@ async function extractFrameBase64(file) {
     video.playsInline = true;
     video.preload = "auto";
 
-    video.onloadeddata = () => {
+    video.onloadedmetadata = () => {
+      // seek slightly into the video to ensure a real frame
+      video.currentTime = Math.min(0.3, video.duration || 0.3);
+    };
+
+    video.onseeked = () => {
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -174,10 +179,9 @@ async function extractFrameBase64(file) {
     };
 
     video.onerror = reject;
-    video.load(); // REQUIRED on iOS
+    video.load();
   });
 }
-
 /* ─────────────────────────────
    OPEN CAMERA
 ───────────────────────────── */
