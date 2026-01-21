@@ -203,8 +203,10 @@ uploader.addEventListener("change", async () => {
   if (!file) return;
 
   try {
+    // 1️⃣ Extract frame
     const imageBase64 = await extractFrameBase64(file);
 
+    // 2️⃣ Upload video
     const res = await fetch(UPLOAD_API, {
       method: "POST",
       headers: {
@@ -217,6 +219,7 @@ uploader.addEventListener("change", async () => {
 
     const data = await res.json();
 
+    // 3️⃣ Send frame to Vision
     const visionRes = await fetch(
       "https://script.google.com/macros/s/AKfycbyCRugnoCKl_T6EPuHs6D-ZUuT5LyMpp5Q7YC_d0W7q1jDzpG0dp94sQYQin7WwqT0N4g/exec",
       {
@@ -232,6 +235,7 @@ uploader.addEventListener("change", async () => {
     const visionData = await visionRes.json();
     const verified = visionData.verified === true;
 
+    // 4️⃣ Return to game
     goBack({
       verified: verified ? "true" : "false",
       video: verified ? data.publicUrl : ""
@@ -241,79 +245,6 @@ uploader.addEventListener("change", async () => {
     console.error(err);
     goBack({ verified: "false" });
   }
-});
-</script>
-/* ─────────────────────────────
-   OPEN CAMERA
-───────────────────────────── */
-circle.addEventListener("click", () => {
-  uploader.value = "";
-  uploader.click();
-});
-
-/* ─────────────────────────────
-   TAP OUTSIDE → CANCEL & RETURN
-───────────────────────────── */
-document.body.addEventListener("pointerdown", (e) => {
-  if (!circle.contains(e.target)) {
-    goBack({ verified: "false" });
-  }
-});
-
-/* ─────────────────────────────
-   HANDLE VIDEO
-───────────────────────────── */
-uploader.addEventListener("change", async () => {
-  const file = uploader.files[0];
-
-  // User cancelled camera
-  if (!file) return;
-
- try {
-  // 1️⃣ Extract a face frame
-  const imageBase64 = await extractFrameBase64(file);
-
-  // 2️⃣ Upload video
-  const res = await fetch(UPLOAD_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": file.type || "video/mp4"
-    },
-    body: file
-  });
-
-  if (!res.ok) throw new Error("Upload failed");
-
-  const data = await res.json();
-
-  // 3️⃣ Send image to Vision
-  const visionRes = await fetch(
-    "https://script.google.com/macros/s/AKfycbyCRugnoCKl_T6EPuHs6D-ZUuT5LyMpp5Q7YC_d0W7q1jDzpG0dp94sQYQin7WwqT0N4g/exec",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image: imageBase64,
-        video: data.publicUrl
-      })
-    }
-  );
-
-  const visionData = await visionRes.json();
-
-  // 4️⃣ Decide verification
-  const verified = visionData.verified === true;
-
-  // 5️⃣ Return to game ONCE
-  goBack({
-    verified: verified ? "true" : "false",
-    video: verified ? data.publicUrl : ""
-  });
-
-} catch (err) {
-  console.error(err);
-  goBack({ verified: "false" });
-}
 });
 </script>
 
