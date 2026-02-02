@@ -88,7 +88,6 @@ function swap() {
 function holdFirstFrame(src) {
   const v = vids[back];
   v.src = src;
-  v.muted = false;
   v.currentTime = 0;
   v.pause();
   v.load();
@@ -101,7 +100,6 @@ function holdFirstFrame(src) {
 function playThenHold(src, nextHold, onEnd) {
   const v = vids[back];
   v.src = src;
-  v.muted = false;
   v.currentTime = 0;
   v.load();
 
@@ -118,7 +116,7 @@ function playThenHold(src, nextHold, onEnd) {
 }
 
 /* ─────────────────────────────
-   INIT (NO BLACK SCREEN)
+   INIT
 ───────────────────────────── */
 holdFirstFrame(LENS);
 
@@ -128,7 +126,7 @@ holdFirstFrame(LENS);
 document.body.addEventListener("pointerdown", () => {
   if (busy) return;
 
-  // Step 0 → Lens cap off
+  // Step 0 → play lens cap off
   if (state === 0) {
     busy = true;
     playThenHold(LENS, CRANK, () => {
@@ -137,15 +135,19 @@ document.body.addEventListener("pointerdown", () => {
     });
   }
 
-  // Step 1 → Film crank + open camera
+  // Step 1 → play film crank
   else if (state === 1) {
     busy = true;
-    uploader.value = "";
-    uploader.click(); // iOS-safe
     playThenHold(CRANK, SNAP, () => {
-      state = 2;
+      state = 2; // READY FOR CAMERA TAP
       busy = false;
     });
+  }
+
+  // Step 2 → OPEN CAMERA (iOS-safe)
+  else if (state === 2) {
+    uploader.value = "";
+    uploader.click(); // ✅ MUST be directly inside tap
   }
 });
 
@@ -155,10 +157,9 @@ document.body.addEventListener("pointerdown", () => {
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
-  // Cancel → stay on SNAP first frame
+  // Cancel → stay usable on SNAP frame
   if (!file) {
     state = 2;
-    busy = false;
     return;
   }
 
