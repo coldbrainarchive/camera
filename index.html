@@ -14,7 +14,7 @@ html, body {
   overflow: hidden;
 }
 
-.video {
+video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -22,6 +22,7 @@ html, body {
   object-fit: contain;
   background: black;
 }
+
 .hidden {
   visibility: hidden;
 }
@@ -30,8 +31,8 @@ html, body {
 
 <body>
 
-<video id="videoA" class="video" playsinline preload="auto"></video>
-<video id="videoB" class="video hidden" playsinline preload="auto"></video>
+<video id="v1" playsinline preload="auto"></video>
+<video id="v2" playsinline preload="auto" class="hidden"></video>
 
 <input
   id="uploader"
@@ -48,12 +49,9 @@ html, body {
 const BASE =
   "https://pub-3c96f33aff6b452c83e88bfef455da73.r2.dev/";
 
-const STEPS = [
-  BASE + "camera_idle.mp4",
-  BASE + "lens_cap_off.mp4",
-  BASE + "film_crank.mp4",
-  BASE + "photo_taken.mp4"
-];
+const LENS  = BASE + "lens_cap_off.mp4";
+const CRANK = BASE + "film_crank.mp4";
+const SNAP  = BASE + "photo_taken.mp4";
 
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
@@ -63,9 +61,7 @@ const UPLOAD_API =
 ───────────────────────────── */
 const params = new URLSearchParams(location.search);
 const sceneFromGame = params.get("scene");
-if (sceneFromGame) {
-  localStorage.setItem("returnScene", sceneFromGame);
-}
+if (sceneFromGame) localStorage.setItem("returnScene", sceneFromGame);
 
 function goBack(extra = {}) {
   const scene = localStorage.getItem("returnScene") || "";
@@ -75,18 +71,13 @@ function goBack(extra = {}) {
 }
 
 /* ─────────────────────────────
-   VIDEO ENGINE (DOUBLE BUFFER)
+   VIDEO CORE (NO BLACK FRAMES)
 ───────────────────────────── */
-const vids = [
-  document.getElementById("videoA"),
-  document.getElementById("videoB")
-];
-const uploader = document.getElementById("uploader");
-
+const vids = [document.getElementById("v1"), document.getElementById("v2")];
 let front = 0;
 let back = 1;
-let step = 0;
-let locked = false;
+let state = 0;
+let busy = false;
 
 function swap() {
   vids[front].classList.add("hidden");
@@ -97,61 +88,63 @@ function swap() {
 function holdFirstFrame(src) {
   const v = vids[back];
   v.src = src;
-  v.currentTime = 0;
   v.muted = false;
-  v.onloadeddata = () => {
-    v.pause();
-    swap();
-  };
+  v.currentTime = 0;
+  v.pause();
   v.load();
+
+  v.requestVideoFrameCallback(() => {
+    swap();
+  });
 }
 
-function playAndHoldNext(src, onEnd) {
+function playThenHold(src, nextHold, onEnd) {
   const v = vids[back];
   v.src = src;
-  v.currentTime = 0;
   v.muted = false;
-  v.onloadeddata = () => {
+  v.currentTime = 0;
+  v.load();
+
+  v.requestVideoFrameCallback(() => {
     swap();
     v.play();
-  };
+  });
+
   v.onended = () => {
     v.onended = null;
+    if (nextHold) holdFirstFrame(nextHold);
     if (onEnd) onEnd();
   };
-  v.load();
 }
 
 /* ─────────────────────────────
-   INIT
+   INIT (NO BLACK SCREEN)
 ───────────────────────────── */
-holdFirstFrame(STEPS[0]);
+holdFirstFrame(LENS);
 
 /* ─────────────────────────────
    TAP = ADVANCE
 ───────────────────────────── */
 document.body.addEventListener("pointerdown", () => {
-  if (locked) return;
+  if (busy) return;
 
-  // Step 0 → 1
-  if (step === 0) {
-    locked = true;
-    playAndHoldNext(STEPS[1], () => {
-      step = 1;
-      locked = false;
-      holdFirstFrame(STEPS[1]);
+  // Step 0 → Lens cap off
+  if (state === 0) {
+    busy = true;
+    playThenHold(LENS, CRANK, () => {
+      state = 1;
+      busy = false;
     });
   }
 
-  // Step 1 → 2 (camera opens immediately)
-  else if (step === 1) {
-    locked = true;
+  // Step 1 → Film crank + open camera
+  else if (state === 1) {
+    busy = true;
     uploader.value = "";
-    uploader.click(); // MUST be inside gesture
-    playAndHoldNext(STEPS[2], () => {
-      step = 2;
-      locked = false;
-      holdFirstFrame(STEPS[2]);
+    uploader.click(); // iOS-safe
+    playThenHold(CRANK, SNAP, () => {
+      state = 2;
+      busy = false;
     });
   }
 });
@@ -162,9 +155,10 @@ document.body.addEventListener("pointerdown", () => {
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
+  // Cancel → stay on SNAP first frame
   if (!file) {
-    // Cancel → stay usable
-    locked = false;
+    state = 2;
+    busy = false;
     return;
   }
 
@@ -176,9 +170,9 @@ uploader.addEventListener("change", async () => {
     });
 
     const data = await res.json();
+    busy = true;
 
-    locked = true;
-    playAndHoldNext(STEPS[3], () => {
+    playThenHold(SNAP, null, () => {
       goBack({
         verified: data.verified ? "true" : "false",
         image: data.publicUrl || ""
