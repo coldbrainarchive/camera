@@ -27,12 +27,11 @@ video {
   visibility: hidden;
 }
 
-/* Full-screen tap layer (REQUIRED for iOS) */
+/* Full-screen tap layer (REAL user gesture) */
 #tapZone {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: transparent;
 }
 </style>
 </head>
@@ -42,21 +41,12 @@ video {
 <video id="v1" playsinline preload="auto"></video>
 <video id="v2" playsinline preload="auto" class="hidden"></video>
 
-<!-- ⚠️ iOS REQUIRES this to be "visible" -->
+<!-- iOS requires this element to exist in DOM -->
 <input
   id="uploader"
   type="file"
   accept="image/*"
   capture="user"
-  style="
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 1px;
-    height: 1px;
-    opacity: 0.001;
-    pointer-events: none;
-  "
 />
 
 <div id="tapZone"></div>
@@ -90,7 +80,7 @@ function goBack(extra = {}) {
 }
 
 /* ─────────────────────────────
-   VIDEO CORE (DOUBLE BUFFER)
+   VIDEO ENGINE (DOUBLE BUFFER)
 ───────────────────────────── */
 const vids = [document.getElementById("v1"), document.getElementById("v2")];
 const uploader = document.getElementById("uploader");
@@ -100,6 +90,13 @@ let front = 0;
 let back = 1;
 let state = 0;
 let busy = false;
+
+/*
+  STATES:
+  0 = waiting (lens frame)
+  1 = film crank frame
+  2 = READY_FOR_CAMERA (tap opens camera)
+*/
 
 function swap() {
   vids[front].classList.add("hidden");
@@ -114,9 +111,7 @@ function holdFirstFrame(src) {
   v.pause();
   v.load();
 
-  v.requestVideoFrameCallback(() => {
-    swap();
-  });
+  v.requestVideoFrameCallback(() => swap());
 }
 
 function playThenHold(src, nextHold, onEnd) {
@@ -138,17 +133,17 @@ function playThenHold(src, nextHold, onEnd) {
 }
 
 /* ─────────────────────────────
-   INIT (NO BLACK FRAME)
+   INIT
 ───────────────────────────── */
 holdFirstFrame(LENS);
 
 /* ─────────────────────────────
-   TAP FLOW (iOS-SAFE)
+   TAP FLOW (iOS-CORRECT)
 ───────────────────────────── */
 tapZone.addEventListener("click", () => {
   if (busy) return;
 
-  // Step 0 → Lens cap animation
+  // TAP 1 → lens cap animation
   if (state === 0) {
     busy = true;
     playThenHold(LENS, CRANK, () => {
@@ -157,19 +152,19 @@ tapZone.addEventListener("click", () => {
     });
   }
 
-  // Step 1 → Film crank animation
+  // TAP 2 → film crank animation
   else if (state === 1) {
     busy = true;
     playThenHold(CRANK, SNAP, () => {
-      state = 2;
+      state = 2; // camera-ready
       busy = false;
     });
   }
 
-  // Step 2 → OPEN CAMERA (THIS NOW WORKS ON iOS)
+  // TAP 3 → OPEN CAMERA (100% iOS legal)
   else if (state === 2) {
     uploader.value = "";
-    uploader.click(); // ✅ iOS-approved
+    uploader.click();
   }
 });
 
@@ -179,7 +174,7 @@ tapZone.addEventListener("click", () => {
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
-  // Cancel → stay on SNAP frame
+  // Cancel → stay camera-ready
   if (!file) {
     state = 2;
     return;
@@ -193,7 +188,6 @@ uploader.addEventListener("change", async () => {
     });
 
     const data = await res.json();
-    busy = true;
 
     playThenHold(SNAP, null, () => {
       goBack({
