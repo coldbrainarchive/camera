@@ -26,6 +26,14 @@ video {
 .hidden {
   visibility: hidden;
 }
+
+/* Full-screen tap layer (REQUIRED for iOS) */
+#tapZone {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: transparent;
+}
 </style>
 </head>
 
@@ -34,13 +42,24 @@ video {
 <video id="v1" playsinline preload="auto"></video>
 <video id="v2" playsinline preload="auto" class="hidden"></video>
 
+<!-- ⚠️ iOS REQUIRES this to be "visible" -->
 <input
   id="uploader"
   type="file"
   accept="image/*"
   capture="user"
-  hidden
+  style="
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0.001;
+    pointer-events: none;
+  "
 />
+
+<div id="tapZone"></div>
 
 <script>
 /* ─────────────────────────────
@@ -71,9 +90,12 @@ function goBack(extra = {}) {
 }
 
 /* ─────────────────────────────
-   VIDEO CORE (NO BLACK FRAMES)
+   VIDEO CORE (DOUBLE BUFFER)
 ───────────────────────────── */
 const vids = [document.getElementById("v1"), document.getElementById("v2")];
+const uploader = document.getElementById("uploader");
+const tapZone = document.getElementById("tapZone");
+
 let front = 0;
 let back = 1;
 let state = 0;
@@ -116,17 +138,17 @@ function playThenHold(src, nextHold, onEnd) {
 }
 
 /* ─────────────────────────────
-   INIT
+   INIT (NO BLACK FRAME)
 ───────────────────────────── */
 holdFirstFrame(LENS);
 
 /* ─────────────────────────────
-   TAP = ADVANCE
+   TAP FLOW (iOS-SAFE)
 ───────────────────────────── */
-document.body.addEventListener("pointerdown", () => {
+tapZone.addEventListener("click", () => {
   if (busy) return;
 
-  // Step 0 → play lens cap off
+  // Step 0 → Lens cap animation
   if (state === 0) {
     busy = true;
     playThenHold(LENS, CRANK, () => {
@@ -135,19 +157,19 @@ document.body.addEventListener("pointerdown", () => {
     });
   }
 
-  // Step 1 → play film crank
+  // Step 1 → Film crank animation
   else if (state === 1) {
     busy = true;
     playThenHold(CRANK, SNAP, () => {
-      state = 2; // READY FOR CAMERA TAP
+      state = 2;
       busy = false;
     });
   }
 
-  // Step 2 → OPEN CAMERA (iOS-safe)
+  // Step 2 → OPEN CAMERA (THIS NOW WORKS ON iOS)
   else if (state === 2) {
     uploader.value = "";
-    uploader.click(); // ✅ MUST be directly inside tap
+    uploader.click(); // ✅ iOS-approved
   }
 });
 
@@ -157,7 +179,7 @@ document.body.addEventListener("pointerdown", () => {
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
-  // Cancel → stay usable on SNAP frame
+  // Cancel → stay on SNAP frame
   if (!file) {
     state = 2;
     return;
