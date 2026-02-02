@@ -14,56 +14,24 @@ html, body {
   overflow: hidden;
 }
 
-#wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-video {
+.video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: black;
 }
-
-/* Invisible tap zones */
-.tap {
-  position: absolute;
-  pointer-events: auto;
-}
-
-/* Lens area (center) */
-#tap-lens {
-  left: 30%;
-  top: 35%;
-  width: 40%;
-  height: 35%;
-}
-
-/* Shutter button (top right) */
-#tap-shutter {
-  right: 8%;
-  top: 8%;
-  width: 18%;
-  height: 18%;
+.hidden {
+  visibility: hidden;
 }
 </style>
 </head>
 
 <body>
 
-<div id="wrap">
-  <video
-    id="camVideo"
-    playsinline
-    muted
-    preload="auto"
-  ></video>
-
-  <div id="tap-lens" class="tap"></div>
-  <div id="tap-shutter" class="tap"></div>
-</div>
+<video id="videoA" class="video" playsinline preload="auto"></video>
+<video id="videoB" class="video hidden" playsinline preload="auto"></video>
 
 <input
   id="uploader"
@@ -77,15 +45,15 @@ video {
 /* ─────────────────────────────
    CONFIG
 ───────────────────────────── */
-const VIDEO_BASE =
+const BASE =
   "https://pub-3c96f33aff6b452c83e88bfef455da73.r2.dev/";
 
-const VIDEOS = {
-  idle:  VIDEO_BASE + "camera_idle.mp4",
-  lens:  VIDEO_BASE + "lens_cap_off.mp4",
-  crank: VIDEO_BASE + "film_crank.mp4",
-  snap:  VIDEO_BASE + "photo_taken.mp4"
-};
+const STEPS = [
+  BASE + "camera_idle.mp4",
+  BASE + "lens_cap_off.mp4",
+  BASE + "film_crank.mp4",
+  BASE + "photo_taken.mp4"
+];
 
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
@@ -101,74 +69,91 @@ if (sceneFromGame) {
 
 function goBack(extra = {}) {
   const scene = localStorage.getItem("returnScene") || "";
-  const qs = new URLSearchParams({
-    ...(scene ? { scene } : {}),
-    ...extra
-  });
   location.href =
-    `https://coldbrainarchive.pages.dev/?${qs.toString()}`;
+    `https://coldbrainarchive.pages.dev/?scene=${scene}&` +
+    new URLSearchParams(extra);
 }
 
 /* ─────────────────────────────
-   VIDEO ENGINE
+   VIDEO ENGINE (DOUBLE BUFFER)
 ───────────────────────────── */
-const video = document.getElementById("camVideo");
+const vids = [
+  document.getElementById("videoA"),
+  document.getElementById("videoB")
+];
 const uploader = document.getElementById("uploader");
 
-let state = 0;
-// 0 = idle
-// 1 = lens off
-// 2 = waiting for photo
-// 3 = snap → return
+let front = 0;
+let back = 1;
+let step = 0;
+let locked = false;
 
-function showFirstFrame(src) {
-  video.loop = false;
-  video.src = src;
-  video.currentTime = 0;
-  video.load();
+function swap() {
+  vids[front].classList.add("hidden");
+  vids[back].classList.remove("hidden");
+  [front, back] = [back, front];
 }
 
-function playOnce(src, onEnd) {
-  video.loop = false;
-  video.src = src;
-  video.currentTime = 0;
-  video.play();
+function holdFirstFrame(src) {
+  const v = vids[back];
+  v.src = src;
+  v.currentTime = 0;
+  v.muted = false;
+  v.onloadeddata = () => {
+    v.pause();
+    swap();
+  };
+  v.load();
+}
 
-  video.onended = () => {
-    video.onended = null;
+function playAndHoldNext(src, onEnd) {
+  const v = vids[back];
+  v.src = src;
+  v.currentTime = 0;
+  v.muted = false;
+  v.onloadeddata = () => {
+    swap();
+    v.play();
+  };
+  v.onended = () => {
+    v.onended = null;
     if (onEnd) onEnd();
   };
+  v.load();
 }
 
 /* ─────────────────────────────
    INIT
 ───────────────────────────── */
-showFirstFrame(VIDEOS.idle);
+holdFirstFrame(STEPS[0]);
 
 /* ─────────────────────────────
-   LENS TAP
+   TAP = ADVANCE
 ───────────────────────────── */
-document.getElementById("tap-lens").addEventListener("click", () => {
-  if (state !== 0) return;
-  state = 1;
+document.body.addEventListener("pointerdown", () => {
+  if (locked) return;
 
-  playOnce(VIDEOS.lens, () => {
-    showFirstFrame(VIDEOS.idle);
-  });
-});
+  // Step 0 → 1
+  if (step === 0) {
+    locked = true;
+    playAndHoldNext(STEPS[1], () => {
+      step = 1;
+      locked = false;
+      holdFirstFrame(STEPS[1]);
+    });
+  }
 
-/* ─────────────────────────────
-   SHUTTER TAP (MOBILE SAFE)
-───────────────────────────── */
-document.getElementById("tap-shutter").addEventListener("click", () => {
-  if (state !== 1) return;
-  state = 2;
-
-  // MUST be inside user gesture for iOS
-  uploader.value = "";
-  uploader.click();
-
-  playOnce(VIDEOS.crank);
+  // Step 1 → 2 (camera opens immediately)
+  else if (step === 1) {
+    locked = true;
+    uploader.value = "";
+    uploader.click(); // MUST be inside gesture
+    playAndHoldNext(STEPS[2], () => {
+      step = 2;
+      locked = false;
+      holdFirstFrame(STEPS[2]);
+    });
+  }
 });
 
 /* ─────────────────────────────
@@ -176,9 +161,10 @@ document.getElementById("tap-shutter").addEventListener("click", () => {
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
+
   if (!file) {
-    state = 0;
-    showFirstFrame(VIDEOS.idle);
+    // Cancel → stay usable
+    locked = false;
     return;
   }
 
@@ -189,15 +175,13 @@ uploader.addEventListener("change", async () => {
       body: file
     });
 
-    if (!res.ok) throw new Error();
-
     const data = await res.json();
-    state = 3;
 
-    playOnce(VIDEOS.snap, () => {
+    locked = true;
+    playAndHoldNext(STEPS[3], () => {
       goBack({
         verified: data.verified ? "true" : "false",
-        image: data.verified ? data.publicUrl : ""
+        image: data.publicUrl || ""
       });
     });
 
