@@ -11,163 +11,142 @@ html, body {
   width: 100%;
   height: 100%;
   background: black;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
-/* ─────────────────────────────
-   CORE RING
-───────────────────────────── */
-#circle {
-  position: relative;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  border: 10px solid rgba(255,255,255,0.95);
-  background: transparent;
-  box-sizing: border-box;
-  touch-action: manipulation;
-
-  box-shadow:
-    0 0 18px rgba(255,255,255,0.6),
-    0 0 40px rgba(200,220,255,0.35),
-    0 0 90px rgba(160,200,255,0.18);
-
-  animation: breathe 3.2s ease-in-out infinite;
-}
-
-#circle::before {
-  content: "";
-  position: absolute;
-  inset: -35px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(200,220,255,0.18),
-    rgba(120,180,255,0.08),
-    transparent 70%
-  );
-  filter: blur(18px);
-  opacity: 0.85;
-  animation: halo 3.2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-#circle::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.65);
-  filter: blur(1.5px);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-@keyframes breathe {
-  0% {
-    transform: scale(1);
-    box-shadow:
-      0 0 18px rgba(255,255,255,0.55),
-      0 0 40px rgba(200,220,255,0.32),
-      0 0 90px rgba(160,200,255,0.15);
-  }
-  50% {
-    transform: scale(1.045);
-    box-shadow:
-      0 0 26px rgba(255,255,255,0.85),
-      0 0 65px rgba(220,240,255,0.55),
-      0 0 140px rgba(180,220,255,0.3);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow:
-      0 0 18px rgba(255,255,255,0.55),
-      0 0 40px rgba(200,220,255,0.32),
-      0 0 90px rgba(160,200,255,0.15);
-  }
-}
-
-@keyframes halo {
-  0%   { opacity: 0.6; }
-  50%  { opacity: 1; }
-  100% { opacity: 0.6; }
-}
-
-input {
-  display: none;
+video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: black;
 }
 </style>
 </head>
 
 <body>
 
-<div id="circle"></div>
+<video
+  id="camVideo"
+  playsinline
+  muted
+  preload="auto"
+></video>
 
 <input
   id="uploader"
   type="file"
   accept="image/*"
   capture="user"
+  hidden
 />
 
 <script>
+/* ─────────────────────────────
+   CONFIG
+───────────────────────────── */
+const VIDEO_BASE =
+  "https://pub-3c96f33aff6b452c83e88bfef455da73.r2.dev/";
+
+const VIDEOS = {
+  idle:  VIDEO_BASE + "camera_idle.mp4",
+  lens:  VIDEO_BASE + "lens_cap_off.mp4",
+  crank: VIDEO_BASE + "film_crank.mp4",
+  snap:  VIDEO_BASE + "photo_taken.mp4"
+};
+
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
 
 /* ─────────────────────────────
-   CAPTURE RETURN SCENE ON ENTRY
+   RETURN SCENE HANDLING
 ───────────────────────────── */
 const params = new URLSearchParams(location.search);
 const sceneFromGame = params.get("scene");
-
 if (sceneFromGame) {
   localStorage.setItem("returnScene", sceneFromGame);
 }
 
-const circle = document.getElementById("circle");
-const uploader = document.getElementById("uploader");
-
-/* ─────────────────────────────
-   RETURN HANDLING
-───────────────────────────── */
 function goBack(extra = {}) {
   const scene = localStorage.getItem("returnScene") || "";
   const qs = new URLSearchParams({
     ...(scene ? { scene } : {}),
     ...extra
   });
-
   location.href =
     `https://coldbrainarchive.pages.dev/?${qs.toString()}`;
 }
 
 /* ─────────────────────────────
-   OPEN CAMERA
+   STATE MACHINE
 ───────────────────────────── */
-circle.addEventListener("click", () => {
-  uploader.value = "";
-  uploader.click();
-});
+const video = document.getElementById("camVideo");
+const uploader = document.getElementById("uploader");
+
+let state = 0;
+// 0 = idle
+// 1 = lens off
+// 2 = crank → open camera
+// 3 = photo taken → return
+
+function playLoop(src) {
+  video.loop = true;
+  video.src = src;
+  video.currentTime = 0;
+  video.play();
+}
+
+function playOnce(src, onEnd) {
+  video.loop = false;
+  video.src = src;
+  video.currentTime = 0;
+  video.play();
+
+  video.onended = () => {
+    video.onended = null;
+    if (onEnd) onEnd();
+  };
+}
 
 /* ─────────────────────────────
-   TAP OUTSIDE → CANCEL & RETURN
+   INIT
 ───────────────────────────── */
-document.body.addEventListener("pointerdown", (e) => {
-  if (!circle.contains(e.target)) {
-    goBack({ verified: "false" });
+playLoop(VIDEOS.idle);
+
+/* ─────────────────────────────
+   TAP LOGIC
+───────────────────────────── */
+video.addEventListener("click", () => {
+  if (state === 0) {
+    // Lens cap off
+    state = 1;
+    playOnce(VIDEOS.lens, () => {
+      playLoop(VIDEOS.idle);
+    });
+  }
+  else if (state === 1) {
+    // Film crank → open camera
+    state = 2;
+    playOnce(VIDEOS.crank, () => {
+      uploader.value = "";
+      uploader.click();
+    });
   }
 });
 
 /* ─────────────────────────────
-   HANDLE PHOTO
+   PHOTO TAKEN
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
-  if (!file) return;
+  if (!file) {
+    // cancelled → reset
+    state = 0;
+    playLoop(VIDEOS.idle);
+    return;
+  }
 
   try {
+    // Upload photo
     const res = await fetch(UPLOAD_API, {
       method: "POST",
       headers: {
@@ -180,13 +159,26 @@ uploader.addEventListener("change", async () => {
 
     const data = await res.json();
 
-    goBack({
-      verified: data.verified ? "true" : "false",
-      image: data.verified ? data.publicUrl : ""
+    // Play photo animation → return
+    state = 3;
+    playOnce(VIDEOS.snap, () => {
+      goBack({
+        verified: data.verified ? "true" : "false",
+        image: data.verified ? data.publicUrl : ""
+      });
     });
 
   } catch (err) {
     console.error(err);
+    goBack({ verified: "false" });
+  }
+});
+
+/* ─────────────────────────────
+   TAP OUTSIDE = CANCEL
+───────────────────────────── */
+document.addEventListener("pointerdown", (e) => {
+  if (e.target !== video) {
     goBack({ verified: "false" });
   }
 });
