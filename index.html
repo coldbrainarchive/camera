@@ -56,11 +56,12 @@ video {
 const BASE =
   "https://pub-3c96f33aff6b452c83e88bfef455da73.r2.dev/";
 
-const LENS  = BASE + "lens_cap_off.mp4";
-const CRANK = BASE + "film_crank.mp4";
-const SNAP  = BASE + "photo_taken.mp4";
-const PASS  = BASE + "pass.mp4";
-const FAIL  = BASE + "fail.mp4";
+const LENS    = BASE + "lens_cap_off.mp4";
+const CRANK   = BASE + "film_crank.mp4";
+const WINDING = BASE + "winding.mp4";
+const SNAP    = BASE + "photo_taken.mp4";
+const PASS    = BASE + "pass.mp4";
+const FAIL    = BASE + "fail.mp4";
 
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
@@ -80,7 +81,7 @@ function goBack(extra = {}) {
 }
 
 /* ─────────────────────────────
-   VIDEO ENGINE
+   VIDEO ENGINE (DOUBLE BUFFER)
 ───────────────────────────── */
 const vids = [document.getElementById("v1"), document.getElementById("v2")];
 const uploader = document.getElementById("uploader");
@@ -106,9 +107,19 @@ function swap() {
   [front, back] = [back, front];
 }
 
+function stopAllAudio() {
+  vids.forEach(v => {
+    v.pause();
+    v.currentTime = 0;
+    v.muted = true;
+  });
+}
+
 function holdFirstFrame(src) {
   const v = vids[back];
   v.src = src;
+  v.loop = false;
+  v.muted = false;
   v.currentTime = 0;
   v.pause();
   v.load();
@@ -118,9 +129,13 @@ function holdFirstFrame(src) {
 function playThenHold(src, nextHold, onEnd) {
   busy = true;
   const v = vids[back];
+
+  stopAllAudio();
+
   v.src = src;
-  v.currentTime = 0;
   v.loop = false;
+  v.muted = false;
+  v.currentTime = 0;
   v.load();
 
   v.requestVideoFrameCallback(() => {
@@ -136,13 +151,17 @@ function playThenHold(src, nextHold, onEnd) {
   };
 }
 
-/* 🔁 LOOPING LOADING VIDEO */
-function playLoop(src) {
+/* 🔁 LOOPING WINDING (loading state) */
+function playWindingLoop() {
   busy = true;
   const v = vids[back];
-  v.src = src;
-  v.currentTime = 0;
+
+  stopAllAudio();
+
+  v.src = WINDING;
   v.loop = true;
+  v.muted = false;
+  v.currentTime = 0;
   v.load();
 
   v.requestVideoFrameCallback(() => {
@@ -151,11 +170,16 @@ function playLoop(src) {
   });
 }
 
+/* ▶️ Play result video, hold last frame */
 function playThenHoldLastFrame(src, payload) {
   const v = vids[back];
+
+  stopAllAudio();
+
   v.src = src;
-  v.currentTime = 0;
   v.loop = false;
+  v.muted = false;
+  v.currentTime = 0;
   v.load();
 
   v.requestVideoFrameCallback(() => {
@@ -199,7 +223,7 @@ tapZone.addEventListener("click", () => {
 });
 
 /* ─────────────────────────────
-   PHOTO RESULT (WITH LOADING)
+   PHOTO RESULT → WINDING → SNAP → PASS/FAIL
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
@@ -208,8 +232,8 @@ uploader.addEventListener("change", async () => {
     return;
   }
 
-  // 🎞️ Start loading animation immediately
-  playLoop(SNAP);
+  // 🎞️ Show winding while processing
+  playWindingLoop();
 
   try {
     const res = await fetch(UPLOAD_API, {
@@ -221,13 +245,15 @@ uploader.addEventListener("change", async () => {
     const data = await res.json();
     const passed = data.verified === true;
 
-    playThenHoldLastFrame(
-      passed ? PASS : FAIL,
-      {
-        verified: passed ? "true" : "false",
-        image: data.publicUrl || ""
-      }
-    );
+    playThenHold(SNAP, null, () => {
+      playThenHoldLastFrame(
+        passed ? PASS : FAIL,
+        {
+          verified: passed ? "true" : "false",
+          image: data.publicUrl || ""
+        }
+      );
+    });
 
   } catch {
     playThenHoldLastFrame(FAIL, { verified: "false" });
