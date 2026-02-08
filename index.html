@@ -41,7 +41,6 @@ video {
 <video id="v1" playsinline preload="auto"></video>
 <video id="v2" playsinline preload="auto" class="hidden"></video>
 
-<!-- iOS requires this element to exist in DOM -->
 <input
   id="uploader"
   type="file"
@@ -61,6 +60,8 @@ const BASE =
 const LENS  = BASE + "lens_cap_off.mp4";
 const CRANK = BASE + "film_crank.mp4";
 const SNAP  = BASE + "photo_taken.mp4";
+const PASS  = BASE + "pass.mp4";
+const FAIL  = BASE + "fail.mp4";
 
 const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
@@ -95,7 +96,7 @@ let busy = false;
   STATES:
   0 = waiting (lens frame)
   1 = film crank frame
-  2 = READY_FOR_CAMERA (tap opens camera)
+  2 = READY_FOR_CAMERA
 */
 
 function swap() {
@@ -132,6 +133,23 @@ function playThenHold(src, nextHold, onEnd) {
   };
 }
 
+function playThenGoBack(src, payload) {
+  const v = vids[back];
+  v.src = src;
+  v.currentTime = 0;
+  v.load();
+
+  v.requestVideoFrameCallback(() => {
+    swap();
+    v.play();
+  });
+
+  v.onended = () => {
+    v.onended = null;
+    goBack(payload);
+  };
+}
+
 /* ─────────────────────────────
    INIT
 ───────────────────────────── */
@@ -143,7 +161,6 @@ holdFirstFrame(LENS);
 tapZone.addEventListener("click", () => {
   if (busy) return;
 
-  // TAP 1 → lens cap animation
   if (state === 0) {
     busy = true;
     playThenHold(LENS, CRANK, () => {
@@ -152,16 +169,14 @@ tapZone.addEventListener("click", () => {
     });
   }
 
-  // TAP 2 → film crank animation
   else if (state === 1) {
     busy = true;
     playThenHold(CRANK, SNAP, () => {
-      state = 2; // camera-ready
+      state = 2;
       busy = false;
     });
   }
 
-  // TAP 3 → OPEN CAMERA (100% iOS legal)
   else if (state === 2) {
     uploader.value = "";
     uploader.click();
@@ -169,12 +184,11 @@ tapZone.addEventListener("click", () => {
 });
 
 /* ─────────────────────────────
-   PHOTO RESULT
+   PHOTO RESULT → SNAP → PASS/FAIL
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
 
-  // Cancel → stay camera-ready
   if (!file) {
     state = 2;
     return;
@@ -188,16 +202,24 @@ uploader.addEventListener("change", async () => {
     });
 
     const data = await res.json();
+    const passed = data.verified === true;
 
+    // 1️⃣ play photo_taken
     playThenHold(SNAP, null, () => {
-      goBack({
-        verified: data.verified ? "true" : "false",
-        image: data.publicUrl || ""
-      });
+
+      // 2️⃣ play pass OR fail
+      playThenGoBack(
+        passed ? PASS : FAIL,
+        {
+          verified: passed ? "true" : "false",
+          image: data.publicUrl || ""
+        }
+      );
+
     });
 
   } catch {
-    goBack({ verified: "false" });
+    playThenGoBack(FAIL, { verified: "false" });
   }
 });
 </script>
