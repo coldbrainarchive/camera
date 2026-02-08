@@ -27,7 +27,6 @@ video {
   visibility: hidden;
 }
 
-/* Full-screen tap layer (REAL user gesture) */
 #tapZone {
   position: fixed;
   inset: 0;
@@ -91,12 +90,14 @@ let front = 0;
 let back = 1;
 let state = 0;
 let busy = false;
+let resultPayload = null;
 
 /*
   STATES:
-  0 = waiting (lens frame)
+  0 = lens frame
   1 = film crank frame
   2 = READY_FOR_CAMERA
+  3 = RESULT_HOLD (tap to return)
 */
 
 function swap() {
@@ -133,7 +134,7 @@ function playThenHold(src, nextHold, onEnd) {
   };
 }
 
-function playThenGoBack(src, payload) {
+function playThenHoldLastFrame(src, payload) {
   const v = vids[back];
   v.src = src;
   v.currentTime = 0;
@@ -146,7 +147,10 @@ function playThenGoBack(src, payload) {
 
   v.onended = () => {
     v.onended = null;
-    goBack(payload);
+    v.pause();              // hold last frame
+    state = 3;              // RESULT_HOLD
+    busy = false;
+    resultPayload = payload;
   };
 }
 
@@ -156,7 +160,7 @@ function playThenGoBack(src, payload) {
 holdFirstFrame(LENS);
 
 /* ─────────────────────────────
-   TAP FLOW (iOS-CORRECT)
+   TAP FLOW
 ───────────────────────────── */
 tapZone.addEventListener("click", () => {
   if (busy) return;
@@ -181,6 +185,10 @@ tapZone.addEventListener("click", () => {
     uploader.value = "";
     uploader.click();
   }
+
+  else if (state === 3 && resultPayload) {
+    goBack(resultPayload);
+  }
 });
 
 /* ─────────────────────────────
@@ -204,22 +212,20 @@ uploader.addEventListener("change", async () => {
     const data = await res.json();
     const passed = data.verified === true;
 
-    // 1️⃣ play photo_taken
+    const payload = {
+      verified: passed ? "true" : "false",
+      image: data.publicUrl || ""
+    };
+
     playThenHold(SNAP, null, () => {
-
-      // 2️⃣ play pass OR fail
-      playThenGoBack(
+      playThenHoldLastFrame(
         passed ? PASS : FAIL,
-        {
-          verified: passed ? "true" : "false",
-          image: data.publicUrl || ""
-        }
+        payload
       );
-
     });
 
   } catch {
-    playThenGoBack(FAIL, { verified: "false" });
+    playThenHoldLastFrame(FAIL, { verified: "false" });
   }
 });
 </script>
