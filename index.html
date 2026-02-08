@@ -37,7 +37,7 @@ video {
   z-index: 10;
 }
 
-/* 🟢 Exit / back zone */
+/* 🟢 Exit zone */
 #exitZone {
   position: fixed;
   left: 8%;
@@ -47,10 +47,13 @@ video {
   z-index: 11;
 }
 
-/* 🔧 DEBUG (remove later)
-#cameraZone { outline: 2px dashed red; }
-#exitZone   { outline: 2px dashed lime; }
-*/
+/* 🟦 Fullscreen result tap */
+#resultZone {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+}
 </style>
 </head>
 
@@ -68,6 +71,7 @@ video {
 
 <div id="cameraZone"></div>
 <div id="exitZone"></div>
+<div id="resultZone"></div>
 
 <script>
 /* ─────────────────────────────
@@ -106,12 +110,21 @@ const vids = [v1, v2];
 const uploader = document.getElementById("uploader");
 const cameraZone = document.getElementById("cameraZone");
 const exitZone = document.getElementById("exitZone");
+const resultZone = document.getElementById("resultZone");
 
 let front = 0;
 let back = 1;
 let state = 0;
 let busy = false;
 let resultPayload = null;
+
+/*
+  STATES:
+  0 = lens
+  1 = crank
+  2 = ready_for_camera
+  3 = result_hold
+*/
 
 function swap() {
   vids[front].classList.add("hidden");
@@ -139,6 +152,7 @@ function holdFirstFrame(src) {
 function playThenHold(src, next, cb) {
   busy = true;
   stopAll();
+
   const v = vids[back];
   v.src = src;
   v.load();
@@ -159,6 +173,7 @@ function playThenHold(src, next, cb) {
 function playWindingLoop() {
   busy = true;
   stopAll();
+
   const v = vids[back];
   v.src = WINDING;
   v.loop = true;
@@ -172,6 +187,7 @@ function playWindingLoop() {
 
 function playThenHoldLast(src, payload) {
   stopAll();
+
   const v = vids[back];
   v.src = src;
   v.load();
@@ -185,6 +201,7 @@ function playThenHoldLast(src, payload) {
     v.pause();
     state = 3;
     resultPayload = payload;
+    resultZone.style.display = "block";
     busy = false;
   };
 }
@@ -194,9 +211,9 @@ function playThenHoldLast(src, payload) {
 ───────────────────────────── */
 holdFirstFrame(LENS);
 
-/* 🔴 CAMERA INTERACTIONS */
+/* 🔴 CAMERA ZONE */
 cameraZone.addEventListener("click", () => {
-  if (busy) return;
+  if (busy || state === 3) return;
 
   if (state === 0) playThenHold(LENS, CRANK, () => state = 1);
   else if (state === 1) playThenHold(CRANK, SNAP, () => state = 2);
@@ -204,14 +221,18 @@ cameraZone.addEventListener("click", () => {
     uploader.value = "";
     uploader.click();
   }
-  else if (state === 3 && resultPayload) {
-    goBack(resultPayload);
-  }
 });
 
-/* 🟢 EXIT ANYTIME */
+/* 🟢 BACK → FORCE FAIL */
 exitZone.addEventListener("click", () => {
-  goBack({ verified: "false" });
+  if (busy || state === 3) return;
+
+  playThenHoldLast(FAIL, { verified: "false" });
+});
+
+/* 🟦 RESULT FULLSCREEN TAP */
+resultZone.addEventListener("click", () => {
+  if (resultPayload) goBack(resultPayload);
 });
 
 /* ─────────────────────────────
@@ -234,7 +255,10 @@ uploader.addEventListener("change", async () => {
       const data = await res.json();
       playThenHoldLast(
         data.verified ? PASS : FAIL,
-        { verified: data.verified ? "true" : "false", image: data.publicUrl }
+        {
+          verified: data.verified ? "true" : "false",
+          image: data.publicUrl
+        }
       );
 
     } catch {
