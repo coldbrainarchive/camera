@@ -58,8 +58,8 @@ const BASE =
 
 const LENS    = BASE + "lens_cap_off.mp4";
 const CRANK   = BASE + "film_crank.mp4";
-const WINDING = BASE + "winding.mp4";
 const SNAP    = BASE + "photo_taken.mp4";
+const WINDING = BASE + "winding.mp4";
 const PASS    = BASE + "pass.mp4";
 const FAIL    = BASE + "fail.mp4";
 
@@ -107,11 +107,11 @@ function swap() {
   [front, back] = [back, front];
 }
 
-function stopAllAudio() {
+function stopAllVideo() {
   vids.forEach(v => {
     v.pause();
     v.currentTime = 0;
-    v.muted = true;
+    v.loop = false;
   });
 }
 
@@ -119,7 +119,6 @@ function holdFirstFrame(src) {
   const v = vids[back];
   v.src = src;
   v.loop = false;
-  v.muted = false;
   v.currentTime = 0;
   v.pause();
   v.load();
@@ -128,13 +127,11 @@ function holdFirstFrame(src) {
 
 function playThenHold(src, nextHold, onEnd) {
   busy = true;
+  stopAllVideo();
+
   const v = vids[back];
-
-  stopAllAudio();
-
   v.src = src;
   v.loop = false;
-  v.muted = false;
   v.currentTime = 0;
   v.load();
 
@@ -151,16 +148,14 @@ function playThenHold(src, nextHold, onEnd) {
   };
 }
 
-/* 🔁 LOOPING WINDING (loading state) */
+/* 🔁 WINDING LOOP (processing state) */
 function playWindingLoop() {
   busy = true;
+  stopAllVideo();
+
   const v = vids[back];
-
-  stopAllAudio();
-
   v.src = WINDING;
   v.loop = true;
-  v.muted = false;
   v.currentTime = 0;
   v.load();
 
@@ -170,15 +165,13 @@ function playWindingLoop() {
   });
 }
 
-/* ▶️ Play result video, hold last frame */
+/* ▶️ Result video → hold last frame */
 function playThenHoldLastFrame(src, payload) {
+  stopAllVideo();
+
   const v = vids[back];
-
-  stopAllAudio();
-
   v.src = src;
   v.loop = false;
-  v.muted = false;
   v.currentTime = 0;
   v.load();
 
@@ -223,7 +216,8 @@ tapZone.addEventListener("click", () => {
 });
 
 /* ─────────────────────────────
-   PHOTO RESULT → WINDING → SNAP → PASS/FAIL
+   PHOTO RESULT
+   SNAP → WINDING → PASS/FAIL
 ───────────────────────────── */
 uploader.addEventListener("change", async () => {
   const file = uploader.files[0];
@@ -232,20 +226,23 @@ uploader.addEventListener("change", async () => {
     return;
   }
 
-  // 🎞️ Show winding while processing
-  playWindingLoop();
-
   try {
-    const res = await fetch(UPLOAD_API, {
-      method: "POST",
-      headers: { "Content-Type": file.type || "image/jpeg" },
-      body: file
-    });
+    // 1️⃣ shutter fires
+    playThenHold(SNAP, null, async () => {
 
-    const data = await res.json();
-    const passed = data.verified === true;
+      // 2️⃣ start winding while processing
+      playWindingLoop();
 
-    playThenHold(SNAP, null, () => {
+      const res = await fetch(UPLOAD_API, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "image/jpeg" },
+        body: file
+      });
+
+      const data = await res.json();
+      const passed = data.verified === true;
+
+      // 3️⃣ verdict
       playThenHoldLastFrame(
         passed ? PASS : FAIL,
         {
