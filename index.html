@@ -23,9 +23,7 @@ video {
   background: black;
 }
 
-.hidden {
-  visibility: hidden;
-}
+.hidden { visibility: hidden; }
 
 /* 🔴 Camera interaction zone */
 #cameraZone {
@@ -90,17 +88,24 @@ const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
 
 /* ─────────────────────────────
-   RETURN SCENE
+   RETURN NODE (NEW + FIXED)
 ───────────────────────────── */
 const params = new URLSearchParams(location.search);
-const sceneFromGame = params.get("scene");
-if (sceneFromGame) localStorage.setItem("returnScene", sceneFromGame);
+const returnNode = params.get("return");
 
 function goBack(extra = {}) {
-  const scene = localStorage.getItem("returnScene") || "";
+  if (!returnNode) {
+    // Safety fallback
+    location.href = "https://coldbrainarchive.pages.dev/";
+    return;
+  }
+
   location.href =
-    `https://coldbrainarchive.pages.dev/?scene=${scene}&` +
-    new URLSearchParams(extra);
+    "https://coldbrainarchive.pages.dev/?" +
+    new URLSearchParams({
+      node: returnNode,
+      ...extra
+    });
 }
 
 /* ─────────────────────────────
@@ -137,6 +142,7 @@ function stopAll() {
     v.pause();
     v.loop = false;
     v.currentTime = 0;
+    v.onended = null;
   });
 }
 
@@ -223,10 +229,9 @@ cameraZone.addEventListener("click", () => {
   }
 });
 
-/* 🟢 BACK → FORCE FAIL */
+/* 🟢 EXIT → FORCE FAIL */
 exitZone.addEventListener("click", () => {
   if (busy || state === 3) return;
-
   playThenHoldLast(FAIL, { verified: "false" });
 });
 
