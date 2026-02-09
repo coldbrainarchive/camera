@@ -25,7 +25,6 @@ video {
 
 .hidden { visibility: hidden; }
 
-/* 🔴 Camera interaction zone */
 #cameraZone {
   position: fixed;
   left: 8%;
@@ -35,7 +34,6 @@ video {
   z-index: 10;
 }
 
-/* 🟢 Exit zone */
 #exitZone {
   position: fixed;
   left: 8%;
@@ -45,7 +43,6 @@ video {
   z-index: 11;
 }
 
-/* 🟦 Fullscreen result tap */
 #resultZone {
   position: fixed;
   inset: 0;
@@ -60,12 +57,7 @@ video {
 <video id="v1" playsinline preload="auto"></video>
 <video id="v2" playsinline preload="auto" class="hidden"></video>
 
-<input
-  id="uploader"
-  type="file"
-  accept="image/*"
-  capture="user"
-/>
+<input id="uploader" type="file" accept="image/*" capture="user"/>
 
 <div id="cameraZone"></div>
 <div id="exitZone"></div>
@@ -88,14 +80,18 @@ const UPLOAD_API =
   "https://archive-worker.coldbrainarchive.workers.dev/upload?purpose=camera";
 
 /* ─────────────────────────────
-   RETURN NODE (NEW + FIXED)
+   RETURN NODE (HARD GUARDED)
 ───────────────────────────── */
 const params = new URLSearchParams(location.search);
 const returnNode = params.get("return");
 
-function goBack(extra = {}) {
+let returned = false;
+
+function finalizeAndReturn(extra = {}) {
+  if (returned) return;
+  returned = true;
+
   if (!returnNode) {
-    // Safety fallback
     location.href = "https://coldbrainarchive.pages.dev/";
     return;
   }
@@ -122,14 +118,6 @@ let back = 1;
 let state = 0;
 let busy = false;
 let resultPayload = null;
-
-/*
-  STATES:
-  0 = lens
-  1 = crank
-  2 = ready_for_camera
-  3 = result_hold
-*/
 
 function swap() {
   vids[front].classList.add("hidden");
@@ -169,7 +157,6 @@ function playThenHold(src, next, cb) {
   });
 
   v.onended = () => {
-    v.onended = null;
     if (next) holdFirstFrame(next);
     busy = false;
     cb && cb();
@@ -217,8 +204,8 @@ function playThenHoldLast(src, payload) {
 ───────────────────────────── */
 holdFirstFrame(LENS);
 
-/* 🔴 CAMERA ZONE */
-cameraZone.addEventListener("click", () => {
+/* CAMERA INTERACTION */
+cameraZone.onclick = () => {
   if (busy || state === 3) return;
 
   if (state === 0) playThenHold(LENS, CRANK, () => state = 1);
@@ -227,23 +214,21 @@ cameraZone.addEventListener("click", () => {
     uploader.value = "";
     uploader.click();
   }
-});
+};
 
-/* 🟢 EXIT → FORCE FAIL */
-exitZone.addEventListener("click", () => {
-  if (busy || state === 3) return;
+/* EXIT BUTTON → ALWAYS RETURN */
+exitZone.onclick = () => {
+  if (busy) return;
   playThenHoldLast(FAIL, { verified: "false" });
-});
+};
 
-/* 🟦 RESULT FULLSCREEN TAP */
-resultZone.addEventListener("click", () => {
-  if (resultPayload) goBack(resultPayload);
-});
+/* RESULT TAP → ALWAYS RETURN */
+resultZone.onclick = () => {
+  finalizeAndReturn(resultPayload || {});
+};
 
-/* ─────────────────────────────
-   PHOTO FLOW
-───────────────────────────── */
-uploader.addEventListener("change", async () => {
+/* PHOTO FLOW */
+uploader.onchange = async () => {
   const file = uploader.files[0];
   if (!file) return;
 
@@ -270,7 +255,7 @@ uploader.addEventListener("change", async () => {
       playThenHoldLast(FAIL, { verified: "false" });
     }
   });
-});
+};
 </script>
 
 </body>
